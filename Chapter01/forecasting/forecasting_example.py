@@ -2,6 +2,7 @@ import logging
 import pandas as pd
 import numpy as np
 import matplotlib.pyplot as plt
+import matplotlib.dates as mdates
 plt.rcParams.update({'font.size': 22})
 
 from prophet import Prophet
@@ -111,13 +112,30 @@ def plot_forecast(df_train: pd.DataFrame, df_test: pd.DataFrame, predicted: pd.D
         # print(f"First few values of predicted['ds']: {predicted['ds'].head()}")
         # print(f"First few values of predicted['yhat_upper']: {predicted['yhat_upper'].head()}")
         # print(f"First few values of predicted['yhat_lower']: {predicted['yhat_lower'].head()}")
-        ax.fill_between(
-            x=predicted['ds'], 
-            y1=predicted['yhat_upper'], 
-            y2=predicted['yhat_lower'], 
-            alpha=0.15, 
-            color='red',
-        )
+        # Convert and coerce types
+        predicted = predicted.copy()
+        predicted['ds'] = pd.to_datetime(predicted['ds'])
+        predicted['yhat_upper'] = pd.to_numeric(predicted['yhat_upper'], errors='coerce')
+        predicted['yhat_lower'] = pd.to_numeric(predicted['yhat_lower'], errors='coerce')
+
+        # Convert datetimes to matplotlib float dates (np.isfinite supports floats)
+        x_dt = np.array(predicted['ds'].dt.to_pydatetime())
+        x_nums = mdates.date2num(x_dt)
+
+        y_upper = predicted['yhat_upper'].to_numpy(dtype='float64', copy=False)
+        y_lower = predicted['yhat_lower'].to_numpy(dtype='float64', copy=False)
+
+        # Mask rows where any of x, y_upper, y_lower are non-finite
+        mask = np.isfinite(x_nums) & np.isfinite(y_upper) & np.isfinite(y_lower)
+        if np.any(mask):
+            ax.fill_between(
+                x=x_nums[mask],
+                y1=y_upper[mask],
+                y2=y_lower[mask],
+                alpha=0.15,
+                color='red',
+            )
+            ax.xaxis_date()
     except Exception as e:
         print(f"Error in fill_between: {e}")
         
@@ -131,7 +149,7 @@ def plot_forecast(df_train: pd.DataFrame, df_test: pd.DataFrame, predicted: pd.D
         marker='o'
     )
     current_ytick_values = plt.gca().get_yticks()
-    plt.gca().set_yticklabels(['{:,.0f}'.format(x) for x in current_ytick_values])
+    # plt.gca().set_yticklabels(['{:,.0f}'.format(x) for x in current_ytick_values])
     ax.set_xlabel('Date')
     ax.set_ylabel('Sales')
     plt.tight_layout()
